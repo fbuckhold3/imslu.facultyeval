@@ -488,7 +488,7 @@ server <- function(input, output, session) {
     cat("=== CONTINUE BUTTON CLICKED ===\n")
     cat("eval_type:", values$eval_type, "\n")
     cat("auto_detected:", values$auto_detected, "\n")
-    cat("rotation:", input$rotation, "\n")
+    cat("att_rot:", input$att_rot, "\n")  # FIXED: Changed from rotation to att_rot
     cat("plus length:", if(is.null(input$plus)) 0 else nchar(trimws(input$plus)), "\n")
     cat("delta length:", if(is.null(input$delta)) 0 else nchar(trimws(input$delta)), "\n")
     
@@ -502,16 +502,9 @@ server <- function(input, output, session) {
     # ONLY validate rotation for attendings, NOT for fellows
     if (values$eval_type == "attending") {
       cat("Validating rotation for attending...\n")
-      if (is.null(input$rotation) || input$rotation == "") {
+      if (is.null(input$att_rot) || input$att_rot == "") {
         cat("ERROR: rotation not selected for attending\n")
         showNotification("Please select the rotation on which you worked with this person.", type = "warning")
-        return()
-      }
-      
-      # If rotation is "Other", check that they specified what rotation
-      if (input$rotation == "12" && (is.null(input$other_rot) || trimws(input$other_rot) == "")) {
-        cat("ERROR: other rotation not specified\n")
-        showNotification("Please specify what rotation you worked on.", type = "warning")
         return()
       }
     } else {
@@ -1006,8 +999,7 @@ server <- function(input, output, session) {
       redcap_repeat_instance = as.character(next_instance),
       fac_fell_name = values$selected_faculty$fac_name,  # Add faculty name
       fac_eval_date = format(Sys.Date(), "%Y-%m-%d"),    # Add current date in Y-M-D format (REDCap requirement)
-      rotation = input$rotation,
-      other_rot = if(!is.null(input$other_rot)) input$other_rot else "",
+      att_rot = input$att_rot,  # Changed from rotation to att_rot
       att_or_fell = "1", # Attending
       plus = input$plus,
       delta = input$delta,
@@ -1079,8 +1071,8 @@ server <- function(input, output, session) {
     # Clear all form inputs including evaluation form fields
     updateTextInput(session, "access_code_input", value = "")
     updateTextInput(session, "faculty_search", value = "")
-    updateSelectInput(session, "rotation", selected = "")
-    updateTextInput(session, "other_rot", value = "")
+    updateSelectInput(session, "att_rot", selected = "")
+    # REMOVED: updateTextInput(session, "other_rot", value = "")  # This field no longer exists
     updateTextAreaInput(session, "plus", value = "")
     updateTextAreaInput(session, "delta", value = "")
     updateSelectInput(session, "fell_eval", selected = "")

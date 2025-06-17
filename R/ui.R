@@ -678,33 +678,20 @@ ui <- page_fluid(
                 condition = "output.show_rotation_question",
                 div(class = "mb-4",
                     h5("Select the rotation where you worked together:", class = "question-text"),
-                    selectInput("rotation", "",
+                    selectInput("att_rot", "",
                                 choices = list("Choose..." = "",
-                                               "General Floors - SLUH or VA" = "1",
-                                               "Continuity Clinic" = "2", 
-                                               "MICU" = "3",
-                                               "ACE team" = "4",
-                                               "Cardiology" = "5",
-                                               "Bronze" = "6",
-                                               "Hem/onc Consults" = "7",
-                                               "ID Consults" = "8",
-                                               "Nephrology Consults" = "9",
-                                               "Palliative Care" = "10",
-                                               "Endocrine" = "11",
-                                               "Other (Please specify)" = "12",
-                                               "VA Walk-in, ACS, or Bridge" = "13",
-                                               "Other IM Consults (pulm, gi, cards, etc)" = "14"),
+                                               "SLUH Floors" = "1",
+                                               "VA Floors" = "2", 
+                                               "Continuity Clinic" = "3",
+                                               "Night Float" = "4",
+                                               "Acute Care" = "5",
+                                               "Bridge Clinic" = "6",
+                                               "Bronze" = "7",
+                                               "Cards (inpatient)" = "8",
+                                               "MICU" = "9",
+                                               "Specialty Specific Rotation" = "10",
+                                               "Outpatient Clinic" = "11"),
                                 selected = "")
-                )
-              ),
-              
-              # Other Rotation Specification
-              conditionalPanel(
-                condition = "input.rotation == '12'",
-                div(class = "mb-4",
-                    h5("Please specify the rotation:", class = "question-text"),
-                    textInput("other_rot", "", 
-                              placeholder = "Enter rotation name...")
                 )
               ),
               
