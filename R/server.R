@@ -36,6 +36,134 @@ server <- function(input, output, session) {
     filtered_res$name[1]
   })
   
+  
+  
+  # Update your faculty_progress_text output in server.R to include monthly count:
+  # Replace the existing output$faculty_progress_text with this:
+  
+  output$faculty_progress_text <- renderUI({
+    req(resident_info())
+    
+    # Get resident level and total count
+    resident_record <- resident_data %>%
+      filter(name == resident_info()) %>%
+      slice(1)
+    
+    if (nrow(resident_record) == 0) {
+      return(div("Resident information not found."))
+    }
+    
+    resident_level <- resident_record$Level
+    eval_goal <- get_eval_goal_by_level(resident_level)
+    total_fac_evals <- count_resident_faculty_evals(faculty_eval_data, resident_data, resident_info())
+    monthly_evals <- count_monthly_faculty_evals(faculty_eval_data, resident_data, resident_info())
+    
+    div(
+      style = "text-align: center; font-size: 16px; font-weight: bold;",
+      
+      # Total evaluations
+      div(
+        paste("You have completed", total_fac_evals, "total evaluations"),
+        style = "color: var(--ssm-primary-blue); margin-bottom: 0.5rem;"
+      ),
+      
+      # Monthly evaluations  
+      div(
+        paste("Evaluations in last 30 days:", monthly_evals),
+        style = "color: var(--ssm-secondary-blue); font-size: 14px; margin-bottom: 1rem;"
+      ),
+      
+      # Goal information
+      div(
+        paste("Goal for", resident_level, "level:", eval_goal),
+        style = "margin-bottom: 1rem;"
+      ),
+      
+      if (total_fac_evals >= eval_goal) {
+        div(style = "color: var(--ssm-success-green); font-weight: bold; margin-top: 10px;", "🎉 Goal Achieved!")
+      } else {
+        div(style = "margin-top: 10px;", paste("Remaining:", eval_goal - total_fac_evals))
+      }
+    )
+  })
+  
+  submit_fellow_evaluation <- function() {
+    # Get the resident's record_id
+    resident_record <- resident_data %>%
+      filter(name == values$resident_info) %>%
+      slice(1)
+    
+    if (nrow(resident_record) == 0) {
+      stop("Could not find resident record")
+    }
+    
+    resident_id <- resident_record$record_id
+    
+    # Get next instance number for this resident's faculty evaluations
+    next_instance <- get_next_faculty_eval_instance(resident_id, rdm_token, url)
+    
+    eval_data <- list(
+      record_id = resident_id,
+      redcap_repeat_instrument = "faculty_evaluation",
+      redcap_repeat_instance = as.character(next_instance),
+      fac_fell_name = values$selected_faculty$fac_name,
+      fac_eval_date = format(Sys.Date(), "%Y-%m-%d"),
+      att_or_fell = "2", # Fellow
+      fell_eval = input$fell_eval,
+      att_rot = input$fell_eval,
+      plus = input$plus,
+      delta = input$delta,
+      faculty_evaluation_complete = "2"
+    )
+    
+    cat("Submitting fellow evaluation:\n")
+    print(eval_data)
+    
+    tryCatch({
+      # Submit the evaluation
+      submit_evaluation_to_redcap(eval_data, rdm_token, url)
+      
+      # ALSO submit to pending queue if this is a pending faculty member
+      cat("Checking if pending faculty member...\n")
+      cat("selected_faculty$source:", if(is.null(values$selected_faculty$source)) "NULL" else values$selected_faculty$source, "\n")
+      
+      if (!is.null(values$selected_faculty$source) && values$selected_faculty$source == "pending") {
+        cat("✅ This is a pending faculty member - submitting to pending queue...\n")
+        pending_data <- list(
+          pend_name = values$selected_faculty$fac_name,
+          namepend_fac_fell = "2",  # Use "2" for Fellow, not "Fellow" text
+          pend_rot = input$fell_eval
+        )
+        
+        cat("Pending data to submit:\n")
+        print(pending_data)
+        
+        submit_pending_faculty_to_redcap(pending_data, fac_token, url)
+        cat("✅ Pending queue submission completed\n")
+      }
+      
+      values$current_step <- 4
+      showNotification("Fellow evaluation submitted successfully!", type = "default")
+    }, error = function(e) {
+      cat("❌ Error in submit_fellow_evaluation:", e$message, "\n")
+      showNotification(paste("Error submitting evaluation:", e$message), type = "error")
+    })
+  }
+  
+  output$show_rotation_question <- reactive({
+    result <- !is.null(values$eval_type) && values$eval_type == "attending"
+    cat("show_rotation_question:", result, "- eval_type:", values$eval_type, "\n")
+    return(result)
+  })
+  outputOptions(output, "show_rotation_question", suspendWhenHidden = FALSE)
+  
+  # Also add this for showing eval type selection (if not already there):
+  output$show_eval_type_selection <- reactive({
+    result <- is.null(values$eval_type) || !values$auto_detected
+    return(result)
+  })
+  outputOptions(output, "show_eval_type_selection", suspendWhenHidden = FALSE)
+  
   # Step visibility logic
   output$show_step1 <- reactive({ values$current_step == 1 })
   output$show_step2 <- reactive({ values$current_step == 2 })
@@ -100,16 +228,33 @@ server <- function(input, output, session) {
     resident_level <- resident_record$Level
     eval_goal <- get_eval_goal_by_level(resident_level)
     total_fac_evals <- count_resident_faculty_evals(faculty_eval_data, resident_data, resident_info())
+    monthly_evals <- count_monthly_faculty_evals(faculty_eval_data, resident_data, resident_info())
     
     div(
       style = "text-align: center; font-size: 16px; font-weight: bold;",
-      paste("You have completed", total_fac_evals, "faculty evaluations"),
-      br(),
-      paste("Goal for", resident_level, "level:", eval_goal),
+      
+      # Total evaluations
+      div(
+        paste("You have completed", total_fac_evals, "total evaluations"),
+        style = "color: var(--ssm-primary-blue); margin-bottom: 0.5rem;"
+      ),
+      
+      # Monthly evaluations counter
+      div(
+        paste("📅 Evaluations in last 30 days:", monthly_evals),
+        style = "color: var(--ssm-secondary-blue); font-size: 14px; margin-bottom: 1rem; padding: 0.5rem; background: rgba(0, 102, 161, 0.1); border-radius: 8px;"
+      ),
+      
+      # Goal information
+      div(
+        paste("🎯 Goal for", resident_level, "level:", eval_goal),
+        style = "margin-bottom: 1rem;"
+      ),
+      
       if (total_fac_evals >= eval_goal) {
-        div(style = "color: green; font-weight: bold; margin-top: 10px;", "🎉 Goal Achieved!")
+        div(style = "color: var(--ssm-success-green); font-weight: bold; margin-top: 10px;", "🎉 Goal Achieved!")
       } else {
-        div(style = "margin-top: 10px;", paste("Remaining:", eval_goal - total_fac_evals))
+        div(style = "margin-top: 10px;", paste("📊 Remaining:", eval_goal - total_fac_evals))
       }
     )
   })
@@ -354,18 +499,23 @@ server <- function(input, output, session) {
       return()
     }
     
-    # Validate rotation selection
-    if (is.null(input$rotation) || input$rotation == "") {
-      cat("ERROR: rotation not selected\n")
-      showNotification("Please select the rotation on which you worked with this person.", type = "warning")
-      return()
-    }
-    
-    # If rotation is "Other", check that they specified what rotation
-    if (input$rotation == "12" && (is.null(input$other_rot) || trimws(input$other_rot) == "")) {
-      cat("ERROR: other rotation not specified\n")
-      showNotification("Please specify what rotation you worked on.", type = "warning")
-      return()
+    # ONLY validate rotation for attendings, NOT for fellows
+    if (values$eval_type == "attending") {
+      cat("Validating rotation for attending...\n")
+      if (is.null(input$rotation) || input$rotation == "") {
+        cat("ERROR: rotation not selected for attending\n")
+        showNotification("Please select the rotation on which you worked with this person.", type = "warning")
+        return()
+      }
+      
+      # If rotation is "Other", check that they specified what rotation
+      if (input$rotation == "12" && (is.null(input$other_rot) || trimws(input$other_rot) == "")) {
+        cat("ERROR: other rotation not specified\n")
+        showNotification("Please specify what rotation you worked on.", type = "warning")
+        return()
+      }
+    } else {
+      cat("Skipping rotation validation for fellow\n")
     }
     
     if (is.null(input$plus) || trimws(input$plus) == "") {
@@ -728,51 +878,7 @@ server <- function(input, output, session) {
     )
   }
   
-  # Function to submit fellow evaluation
-  submit_fellow_evaluation <- function() {
-    # Get the resident's record_id
-    resident_record <- resident_data %>%
-      filter(name == values$resident_info) %>%
-      slice(1)
-    
-    if (nrow(resident_record) == 0) {
-      stop("Could not find resident record")
-    }
-    
-    resident_id <- resident_record$record_id
-    
-    # Get next instance number for this resident's faculty evaluations
-    # Pass the token and url parameters to the function
-    next_instance <- get_next_faculty_eval_instance(resident_id, rdm_token, url)
-    
-    eval_data <- list(
-      record_id = resident_id,
-      redcap_repeat_instrument = "faculty_evaluation",
-      redcap_repeat_instance = as.character(next_instance),
-      fac_fell_name = values$selected_faculty$fac_name,  # Add faculty name
-      fac_eval_date = format(Sys.Date(), "%Y-%m-%d"),    # Add current date in Y-M-D format (REDCap requirement)
-      rotation = input$rotation,
-      other_rot = if(!is.null(input$other_rot)) input$other_rot else "",
-      att_or_fell = "2", # Fellow
-      fell_eval = input$fell_eval,
-      plus = input$plus,
-      delta = input$delta,
-      faculty_evaluation_complete = "2" # Complete
-    )
-    
-    cat("Submitting fellow evaluation:\n")
-    print(eval_data)
-    
-    tryCatch({
-      submit_evaluation_to_redcap(eval_data, rdm_token, url)
-      values$current_step <- 4
-      showNotification("Fellow evaluation submitted successfully!", type = "default")
-    }, error = function(e) {
-      showNotification(paste("Error submitting evaluation:", e$message), type = "error")
-    })
-  }
-  
-  
+
   # Handle pending faculty addition
   observeEvent(input$add_pending_faculty, {
     req(input$pend_name)
@@ -783,7 +889,7 @@ server <- function(input, output, session) {
     pending_data <- list(
       resident_name = values$resident_info,
       pend_name = input$pend_name,
-      namepend_fac_fell = input$namepend_fac_fell,
+      namepend_fac_fell = if(input$namepend_fac_fell == "Fellow") "2" else "1",  # ✅ Convert text to number
       pend_rot = input$pend_rot,
       submission_date = Sys.Date()
     )
@@ -938,23 +1044,9 @@ server <- function(input, output, session) {
   })
   
   
+  # Remove the old get_next_faculty_eval_instance function from server.R since we moved it to the functions file
   
-  # Navigation buttons
-  observeEvent(input$back_to_search, {
-    values$current_step <- 2
-    values$selected_faculty <- NULL
-    values$eval_step <- 1
-    values$eval_type <- NULL
-  })
-  
-  observeEvent(input$evaluate_another, {
-    values$current_step <- 2
-    values$selected_faculty <- NULL
-    values$eval_step <- 1
-    values$eval_type <- NULL
-    updateTextInput(session, "faculty_search", value = "")
-  })
-  
+  # Add Return to Start functionality for all steps
   observeEvent(input$return_to_start_step2, {
     # Reset all reactive values to initial state
     values$current_step <- 1
@@ -1021,6 +1113,22 @@ server <- function(input, output, session) {
     
     # Clear all form inputs
     updateTextInput(session, "access_code_input", value = "")
+    updateTextInput(session, "faculty_search", value = "")
+  })
+  
+  # Navigation buttons
+  observeEvent(input$back_to_search, {
+    values$current_step <- 2
+    values$selected_faculty <- NULL
+    values$eval_step <- 1
+    values$eval_type <- NULL
+  })
+  
+  observeEvent(input$evaluate_another, {
+    values$current_step <- 2
+    values$selected_faculty <- NULL
+    values$eval_step <- 1
+    values$eval_type <- NULL
     updateTextInput(session, "faculty_search", value = "")
   })
   
